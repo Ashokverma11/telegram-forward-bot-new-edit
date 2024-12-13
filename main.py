@@ -10,13 +10,13 @@ from telethon.tl.functions.channels import LeaveChannelRequest, JoinChannelReque
 from telegram import Bot
 from telegram import Update
 from telethon.errors import SessionPasswordNeededError
-
-
-API_ID = '25324203'
-API_HASH = 'ea9b04db173a65635a7a483e20a2f123'
-BOT_TOKEN = '7595469262:AAE7oOPJu7DZieCdDE0vyc9_ADX7K8kTAnw'
-ALLOWED_USERNAME = 'itz36BoDa'
-
+import os
+from dotenv import load_dotenv
+load_dotenv()
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ALLOWED_USERNAME = os.getenv("ALLOWED_USERNAME")
 # Global variables for interaction
 user_chat_id = None
 user_session_name = None

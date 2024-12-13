@@ -1,6 +1,13 @@
 from telethon import TelegramClient, events
 import asyncio
 from telethon.errors import SessionPasswordNeededError
+import os
+from dotenv import load_dotenv
+load_dotenv()
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ALLOWED_USERNAME = os.getenv("ALLOWED_USERNAME")
 
 async def login_user(phone, code=None, password=None):
     try:
@@ -51,9 +58,5 @@ async def main():
         print("Login failed. Please try again.")
 
 if __name__ == "__main__":
-    API_ID = '25324203'
-    API_HASH = 'ea9b04db173a65635a7a483e20a2f123'
-    BOT_TOKEN = '7595469262:AAE7oOPJu7DZieCdDE0vyc9_ADX7K8kTAnw'
-    ALLOWED_USERNAME = 'itz36BoDa'
     client = TelegramClient('user_session', API_ID, API_HASH)
     asyncio.run(main())
