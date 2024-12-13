@@ -18,7 +18,6 @@ API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ALLOWED_USERNAME = os.getenv("ALLOWED_USERNAME")
 
-# Global variables for interaction
 user_chat_id = None
 user_session_name = None
 awaiting_number = False
@@ -249,6 +248,35 @@ async def manage_tasks(update: Update, context: CallbackContext):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Manage Forwarding Tasks:", reply_markup=reply_markup)
 
+async def get_channels(update: Update, context: CallbackContext):
+    global user_chat_id
+    user_chat_id = update.effective_chat.id
+
+    try:
+        dialogs = await client.get_dialogs()
+
+        response = "📋 All Channels :\n\n"
+        for dialog in dialogs:
+            if dialog.is_channel:
+                try:
+                    name = dialog.name or "Unnamed"
+                    chat_id = dialog.entity.id
+                    response += f"{name} -> {chat_id}\n"
+                except:
+                    chat_id = dialog.entity.id
+                    response += f"{chat_id}\n"  
+                
+        MAX_LENGTH = 4000
+        if len(response) > MAX_LENGTH:
+            parts = [response[i:i + MAX_LENGTH] for i in range(0, len(response), MAX_LENGTH)]
+            for part in parts:
+                await update.message.reply_text(part)
+        else:
+            await update.message.reply_text(response)
+
+    except Exception as e:
+        await update.message.reply_text(f"Error fetching channels: {e}")
+
 async def task_action(update: Update, context: CallbackContext):
     global user_chat_id
     user_chat_id = update.effective_chat.id
@@ -393,6 +421,7 @@ async def start_bot():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("forward", add_forward))
     application.add_handler(CommandHandler("manage", manage_tasks))
+    application.add_handler(CommandHandler("getchannels", get_channels))
     application.add_handler(CallbackQueryHandler(task_action))
     await application.initialize()
     await application.start()
