@@ -12,6 +12,9 @@ from telegram import Update
 from telethon.errors import SessionPasswordNeededError
 import os
 from dotenv import load_dotenv
+import subprocess
+
+
 load_dotenv()
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
@@ -25,6 +28,57 @@ awaiting_code = False
 user_phone = None
 user_code = None
 awaiting_password = False
+async def connect_cmd(update: Update, context: CallbackContext):
+    global client
+    session_file = "user_session.session"
+    login_script = "login-telegram.py"
+    try:
+        try:
+            await client.disconnect()
+            print("[+] Client disconnected.")
+            await update.message.reply_text("Client disconnected successfully.")
+        except:
+            pass
+        if os.path.exists(session_file):
+            os.remove(session_file)
+            print("[+] Session file deleted.")
+            await update.message.reply_text("Session file deleted successfully.")
+        else:
+            print("[-] No session file found to delete.")
+            await update.message.reply_text("No session file found to delete.")
+
+        if not os.path.exists(login_script):
+            await update.message.reply_text(f"Error: {login_script} not found.")
+            print(f"[!] Error: {login_script} not found.")
+            return
+
+        subprocess.Popen(['python', login_script], creationflags=subprocess.CREATE_NEW_CONSOLE)
+        await update.message.reply_text(f"{login_script} is now running in a new CMD window.")
+        print(f"[+] {login_script} is now running.")
+    except Exception as e:
+        await update.message.reply_text(f"Error running {login_script}: {e}")
+        print(f"[!] Error running {login_script}: {e}")
+async def check_cmd(update: Update, context: CallbackContext):
+
+    global client
+    session_file = "user_session.session"
+
+    try:
+        if os.path.exists(session_file):
+            if client.is_connected():
+                await client.disconnect()
+                print("[+] Client disconnected before reloading session.")
+
+            client = TelegramClient('user_session', API_ID, API_HASH)
+            await client.connect()
+            print("[+] Client reconnected using existing session.")
+            await update.message.reply_text("Session loaded successfully. Bot is now ready!")
+        else:
+            print("[-] No session file found.")
+            await update.message.reply_text("No session file found. Please run /connect_cmd first.")
+    except Exception as e:
+        print(f"[!] Error loading session: {e}")
+        await update.message.reply_text(f"Error loading session: {e}")
 
 async def restricted_access(update: Update):
     """Check if the user is allowed to use the bot."""
@@ -33,6 +87,29 @@ async def restricted_access(update: Update):
     #     await update.message.reply_text("Sorry, you are not authorized to use this bot.")
     #     return False
     return True
+
+async def reset_login(update: Update, context: CallbackContext):
+    global client
+
+    session_file = "user_session.session"
+    try:
+        if client.is_connected():
+            await client.disconnect() 
+            print("[+] Client disconnected.")
+        
+        if os.path.exists(session_file):
+            os.remove(session_file) 
+            await update.message.reply_text("Session file has been reset successfully. Please use /connect to log in again.")
+            print("[+] Session file deleted.")
+        else:
+            await update.message.reply_text("No session file found to reset.")
+            print("[-] No session file found.")
+
+        client = TelegramClient('user_session', API_ID, API_HASH)
+        print("[+] Telegram client reset.")
+    except Exception as e:
+        await update.message.reply_text(f"Error resetting session: {e}")
+        print(f"[!] Error resetting session: {e}")
 
 async def fetch_group_entity(link):
     try:
@@ -111,7 +188,7 @@ async def forward_messages():
 
         for task_id in list(active_tasks.keys()):
             task = next((t for t in tasks if t[0] == task_id), None)
-            if not task or not task[4]: 
+            if not task or not task[4]:  # إذا كانت المهمة غير موجودة أو غير نشطة
                 print(f"Removing event handler for Task ID: {task_id}")
                 client.remove_event_handler(active_tasks[task_id]['handler'])
                 del active_tasks[task_id]
@@ -122,10 +199,14 @@ async def forward_messages():
             if enabled and task_id not in active_tasks:
                 try:
                     try:
-                        source_entity = await client.get_entity(source_id)
-                        participants = await client.get_participants(source_entity)
-                        if not any(p.is_self for p in participants):
+                        dialogs = await client.get_dialogs()
+                        source_dialog = next(
+                            (dialog for dialog in dialogs if dialog.id == int(source_id)), None
+                        )
+
+                        if not source_dialog:
                             raise ValueError("Not a member of the channel")
+
                     except Exception as e:
                         print(f"Task ID {task_id}: Not a member of the source channel. Disabling task.")
                         update_task(task_id, enabled=0)
@@ -138,11 +219,11 @@ async def forward_messages():
                         await bot.send_message(chat_id=user_chat_id, text=error_message)
                         continue
 
-                    print(f"Listening for new messages from Source: {source_entity.title or source_entity.id}")
+                    print(f"Listening for new messages from Source: {source_id}")
                     handler = lambda event: handle_new_message(event, destination_id)
                     client.add_event_handler(
                         handler,
-                        events.NewMessage(chats=source_entity.id)
+                        events.NewMessage(chats=int(source_id))
                     )
                     active_tasks[task_id] = {'source_id': source_id, 'destination_id': destination_id, 'handler': handler}
                 except Exception as e:
@@ -355,11 +436,15 @@ async def start_bot():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("check_connection", check_connection))
     application.add_handler(CommandHandler("connect", connect_number))
+    application.add_handler(CommandHandler("connect_cmd", connect_cmd))
+    application.add_handler(CommandHandler("check_cmd", check_cmd))
+
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("forward", add_forward))
     application.add_handler(CommandHandler("manage", manage_tasks))
     application.add_handler(CommandHandler("getchannels", get_channels))
     application.add_handler(CallbackQueryHandler(task_action))
+    application.add_handler(CommandHandler("reset_login", reset_login))
     await application.initialize()
     await application.start()
     print("[+] Bot started")
