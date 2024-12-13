@@ -42,60 +42,7 @@ async def fetch_group_entity(link):
     except Exception as e:
         print(f"Error fetching group entity: {e}")
         return None
-    
-async def join_group(link):
-    try:
-        entity = await client.get_entity(link)
-        if hasattr(entity, 'left') and not entity.left:
-            print(f"Already a member of the group/channel: {entity.title or entity.id}")
-            return entity
-        
-        if "joinchat" in link or "+" in link:
-            invite_code = link.split('/')[-1].replace('+', '')
-            result = await client(ImportChatInviteRequest(invite_code))
-            print(f"Successfully joined the private group: {link}")
-            return result
-        else:
-            await client(JoinChannelRequest(link))
-            print(f"Successfully joined the public group or channel: {link}")
-            return entity
-    except Exception as e:
-        try:
-            await client(JoinChannelRequest(link))
-            print(f"Successfully joined the public group or channel: {link}")
-            return entity
-        except:
-            pass
-        print(f"Error joining group or channel {link}: {e}")
-        error_message = (
-            f"⚠️ Error occurred while trying to join the group/channel:\n"
-            f"Link: {link}\n"
-            f"Error: {e}\n"
-            f"Please join manually and delete the task if necessary."
-        )
-        try:
-            bot = Bot(token=BOT_TOKEN)
-            await bot.send_message(chat_id=user_chat_id, text=error_message)
-            print('[+] Success Send Message')
-        except Exception as send_error:
-            print(f"Failed to send error message to user chat: {send_error}")
 
-        return None
-    
-async def join_channel_temporarily(channel):
-    try:
-        print(f"Joining channel: {channel}")
-        await client(JoinChannelRequest(channel))
-        print(f"Joined channel: {channel}")
-        return await client.get_entity(channel)
-    except Exception as e:
-        if 'that you are not part of. Join the group and retry' in str(e):
-            print(e,channel)
-            return await join_group(channel)
-        else:
-            print(f"Error joining channel {channel}: {e}")
-        return None
-    
 def init_db():
     conn = sqlite3.connect('tasks.db')
     cursor = conn.cursor()
@@ -162,31 +109,35 @@ async def forward_messages():
         tasks = get_tasks()
         current_task_ids = {task[0] for task in tasks}
 
-        # Remove handlers for deleted or disabled tasks
         for task_id in list(active_tasks.keys()):
             task = next((t for t in tasks if t[0] == task_id), None)
-            if not task or not task[4]:  # Task doesn't exist or is disabled
+            if not task or not task[4]: 
                 print(f"Removing event handler for Task ID: {task_id}")
                 client.remove_event_handler(active_tasks[task_id]['handler'])
                 del active_tasks[task_id]
 
-        # Add handlers for new tasks or re-enabled tasks
         for task in tasks:
             task_id, name, source_id, destination_id, enabled, edit_enabled = task
 
             if enabled and task_id not in active_tasks:
                 try:
-                    source_entity = await join_group(source_id)
-                    if not source_entity:
-                        print(f"Source entity for Task ID {task_id} is None. Disabling task and notifying user.")
+                    try:
+                        source_entity = await client.get_entity(source_id)
+                        participants = await client.get_participants(source_entity)
+                        if not any(p.is_self for p in participants):
+                            raise ValueError("Not a member of the channel")
+                    except Exception as e:
+                        print(f"Task ID {task_id}: Not a member of the source channel. Disabling task.")
                         update_task(task_id, enabled=0)
                         error_message = (
-                            f"⚠️ Task ID {task_id} has been disabled.\n"
-                            f"Reason: Unable to join or access source group/channel with ID or URL: {source_id}."
+                            f"⚠️ Task '{name}' has been disabled.\n"
+                            f"Reason: You are not a member of the source channel (ID: {source_id}).\n"
+                            f"Please join the channel manually and re-enable the task."
                         )
                         bot = Bot(token=BOT_TOKEN)
-                        await bot.send_message(chat_id=user_chat_id, text=error_message) 
+                        await bot.send_message(chat_id=user_chat_id, text=error_message)
                         continue
+
                     print(f"Listening for new messages from Source: {source_entity.title or source_entity.id}")
                     handler = lambda event: handle_new_message(event, destination_id)
                     client.add_event_handler(
@@ -199,42 +150,30 @@ async def forward_messages():
 
         await asyncio.sleep(10)
 
-async def check_and_listen_channel(channel_username):
-    try:
-        # Get the channel entity
-        entity = await client.get_entity(channel_username)
-        print(f"Resolved Entity: {entity.title} | ID: {entity.id}")
-
-        messages = await client.get_messages(entity, limit=1)
-
-        if messages:
-            print("Found old messages. Leaving the channel...")
-            await client(LeaveChannelRequest(entity))
-        else:
-            print("No old messages found. Joining the channel and leaving...")
-            await join_group(f"https://t.me/{channel_username}")
-            await client(LeaveChannelRequest(entity))
-
-        print(f"Completed checking channel: {channel_username}")
-
-    except Exception as e:
-        print(f"Error checking or leaving channel: {e}")
-
 async def start(update: Update, context: CallbackContext):
     global user_chat_id
     user_chat_id = update.effective_chat.id
     await update.message.reply_text(f"Welcome to the Forward Bot! Use /help to see available commands...\nYour Chat ID: {user_chat_id}")
 
 async def add_forward(update: Update, context: CallbackContext):
+
     global user_chat_id
     user_chat_id = update.effective_chat.id
     args = context.args
+
     if len(args) == 5 and args[3] == "->":
-        name = args[1]
-        source_id = args[2]
-        destination_id = args[4]
-        add_task(name, source_id, destination_id)
-        await update.message.reply_text(f"Forward task '{name}' added!")
+        try:
+            name = args[1]
+            source_id = int(args[2])  
+            destination_id = int(args[4]) 
+
+            if isinstance(source_id, int) and isinstance(destination_id, int):
+                add_task(name, source_id, destination_id)
+                await update.message.reply_text(f"Forward task '{name}' added successfully!")
+            else:
+                await update.message.reply_text("Source ID and Destination ID must be numeric.")
+        except ValueError:
+            await update.message.reply_text("Invalid input! Make sure to use numeric IDs for source and destination.")
     else:
         await update.message.reply_text("Usage: /forward add NameLabel source_id -> destination_id")
 
@@ -319,7 +258,6 @@ async def connect_number(update: Update, context: CallbackContext):
     awaiting_number = True
     await update.message.reply_text(f"Welcome! Please enter your mobile number:")
 
-
 async def handle_message(update: Update, context: CallbackContext):
     global user_chat_id, awaiting_number, awaiting_code, awaiting_password, user_phone, user_code , password
     if not await restricted_access(update):
@@ -361,7 +299,6 @@ async def handle_message(update: Update, context: CallbackContext):
             await update.message.reply_text("You have successfully logged in with 2FA!")
         except Exception as e:
             await update.message.reply_text(f"Error during password authentication: {e}")
-
 
 async def check_connection(update: Update, context: CallbackContext):
     """Check if the client is connected to Telegram and display account info."""
