@@ -1,19 +1,11 @@
-import sqlite3 , os , time
+import sqlite3 , os , asyncio , subprocess
 from telethon import TelegramClient, events
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, CallbackContext , MessageHandler, filters, CallbackContext
-import asyncio
-from telethon.tl.functions.channels import LeaveChannelRequest
-from telethon.tl.functions.messages import ImportChatInviteRequest
-from telethon.tl.types import InputPeerChannel, InputPeerChat
-from telethon.tl.functions.channels import LeaveChannelRequest, JoinChannelRequest
 from telegram import Bot
 from telegram import Update
 from telethon.errors import SessionPasswordNeededError
-import os
 from dotenv import load_dotenv
-import subprocess
-
 
 load_dotenv()
 API_ID = os.getenv("API_ID")
@@ -188,7 +180,7 @@ async def forward_messages():
 
         for task_id in list(active_tasks.keys()):
             task = next((t for t in tasks if t[0] == task_id), None)
-            if not task or not task[4]:  # إذا كانت المهمة غير موجودة أو غير نشطة
+            if not task or not task[4]:
                 print(f"Removing event handler for Task ID: {task_id}")
                 client.remove_event_handler(active_tasks[task_id]['handler'])
                 del active_tasks[task_id]
@@ -386,7 +378,6 @@ async def check_connection(update: Update, context: CallbackContext):
     if not await restricted_access(update):
         return
     if client.is_connected():
-        # Fetch account info if already connected
         try:
             account_info = await client.get_me()
             account_name = account_info.first_name
@@ -407,7 +398,6 @@ async def check_connection(update: Update, context: CallbackContext):
         try:
             await client.connect()
             try:    
-                # Fetch account info after connecting
                 account_info = await client.get_me()
                 account_name = account_info.first_name
                 account_username = account_info.username
@@ -425,6 +415,22 @@ async def check_connection(update: Update, context: CallbackContext):
 
         except Exception as e:
             await update.message.reply_text(f"Failed to connect the client: {e}")
+async def help_command(update: Update, context: CallbackContext):
+    """Displays a list of available commands and their descriptions."""
+    response = (
+        "📋 Available Commands:\n\n"
+        "/start - Start the bot and display a welcome message.\n"
+        "/check_connection - Check if the client is connected and display account info.\n"
+        "/connect - Start the process to connect a new phone number.\n"
+        "/connect_cmd - Run the login script in a separate CMD window.\n"
+        "/check_cmd - Reload the session file for the bot.\n"
+        "/forward add Name source_id -> destination_id - Add a forwarding task.\n"
+        "/manage - Manage active forwarding tasks (Enable/Disable/Delete).\n"
+        "/getchannels - List all channels the bot can access with their IDs.\n"
+        "/reset_login - Reset the current session and delete the session file.\n"
+        "/help - Display this help message.\n"
+    )
+    await update.message.reply_text(response)
 
 async def start_bot():
     global user_chat_id , password
@@ -438,6 +444,7 @@ async def start_bot():
     application.add_handler(CommandHandler("connect", connect_number))
     application.add_handler(CommandHandler("connect_cmd", connect_cmd))
     application.add_handler(CommandHandler("check_cmd", check_cmd))
+    application.add_handler(CommandHandler("help", help_command))
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CommandHandler("forward", add_forward))

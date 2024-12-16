@@ -1,5 +1,5 @@
 from telethon import TelegramClient, events
-import asyncio
+import asyncio , time
 from telethon.errors import SessionPasswordNeededError
 import os
 from dotenv import load_dotenv
@@ -53,10 +53,10 @@ async def main():
 
     if status == "authenticated":
         print("Login successful!")
-        
     else:
         print("Login failed. Please try again.")
-
+    print('Well Close After 10sec')
+    time.sleep(10)
 if __name__ == "__main__":
     client = TelegramClient('user_session', API_ID, API_HASH)
     asyncio.run(main())
