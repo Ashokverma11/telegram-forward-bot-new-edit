@@ -2,3 +2,4 @@ telethon
 python-dotenv
 python-telegram-bot
 standard-imghdr
+db-sqlite3
