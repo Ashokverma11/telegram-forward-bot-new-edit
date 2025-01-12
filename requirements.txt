@@ -1,4 +1,4 @@
 telethon
 python-dotenv
 python-telegram-bot
-imghdr
+standard-imghdr
